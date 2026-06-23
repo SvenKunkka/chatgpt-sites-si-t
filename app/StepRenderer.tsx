@@ -20,6 +20,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { cmfTemplates } from "./cmfTemplates";
 import type { CmfSlot, CmfTemplate } from "./cmfTemplates";
+import {
+  createProductMaterial,
+  getMaterialPreset,
+  materialPresets,
+} from "./materialSystem";
 
 type Phase = "empty" | "loading" | "ready" | "error";
 type QualityKey = "fast" | "balanced" | "fine";
@@ -68,6 +73,26 @@ type RenderImage = {
   viewLabel: string;
   fileName: string;
   dataUrl: string;
+};
+
+type MaterialOverrides = Partial<Record<CmfSlot, string>>;
+
+type RenderEnvironmentKey =
+  | "soft-studio"
+  | "ecommerce-white"
+  | "black-contrast"
+  | "warm-showcase"
+  | "cool-tech";
+
+type ReferenceStyle = {
+  fileName: string;
+  dataUrl: string;
+  palette: [string, string, string];
+  background: string;
+  warmth: number;
+  brightness: number;
+  contrast: number;
+  saturation: number;
 };
 
 type WorkerResponse =
@@ -129,6 +154,86 @@ const renderViews: Array<{
   { key: "hero", label: "三分之四", direction: [1.15, -1.35, 0.82] },
   { key: "front", label: "正面", direction: [0.05, -1, 0.28] },
   { key: "top", label: "俯视", direction: [0.25, -0.32, 1] },
+];
+
+const renderEnvironments: Array<{
+  key: RenderEnvironmentKey;
+  label: string;
+  background: string;
+  ambient: string;
+  ground: string;
+  keyLight: string;
+  fill: string;
+  keyIntensity: number;
+  fillIntensity: number;
+  hemiIntensity: number;
+  exposure: number;
+}> = [
+  {
+    key: "soft-studio",
+    label: "柔光棚拍",
+    background: "#f4f7f8",
+    ambient: "#ffffff",
+    ground: "#93a0a5",
+    keyLight: "#ffffff",
+    fill: "#b9d9d0",
+    keyIntensity: 2.8,
+    fillIntensity: 1.3,
+    hemiIntensity: 1.6,
+    exposure: 1.05,
+  },
+  {
+    key: "ecommerce-white",
+    label: "白底电商",
+    background: "#ffffff",
+    ambient: "#ffffff",
+    ground: "#d7dde0",
+    keyLight: "#ffffff",
+    fill: "#ffffff",
+    keyIntensity: 3.2,
+    fillIntensity: 1.8,
+    hemiIntensity: 1.9,
+    exposure: 1.12,
+  },
+  {
+    key: "black-contrast",
+    label: "黑底高反差",
+    background: "#101316",
+    ambient: "#48525c",
+    ground: "#2f363a",
+    keyLight: "#ffffff",
+    fill: "#6ca3ff",
+    keyIntensity: 4.2,
+    fillIntensity: 0.9,
+    hemiIntensity: 0.9,
+    exposure: 0.95,
+  },
+  {
+    key: "warm-showcase",
+    label: "暖光展示",
+    background: "#f4efe7",
+    ambient: "#fff4df",
+    ground: "#c7b9a6",
+    keyLight: "#ffd9a6",
+    fill: "#c9d8ff",
+    keyIntensity: 3.3,
+    fillIntensity: 0.9,
+    hemiIntensity: 1.5,
+    exposure: 1.06,
+  },
+  {
+    key: "cool-tech",
+    label: "冷调科技",
+    background: "#edf4f8",
+    ambient: "#eaf8ff",
+    ground: "#9aaab5",
+    keyLight: "#e9fbff",
+    fill: "#8ab5ff",
+    keyIntensity: 3.1,
+    fillIntensity: 1.5,
+    hemiIntensity: 1.4,
+    exposure: 1.02,
+  },
 ];
 
 function getCmfTemplate(templateId: string | null) {
@@ -212,20 +317,13 @@ function materialForColor(color: THREE.Color, mode: MaterialMode) {
   });
 }
 
-function materialForCmf(slot: CmfTemplate["slots"][CmfSlot]) {
-  const isTransparent = slot.material === "transparent" || (slot.opacity ?? 1) < 1;
-
-  return new THREE.MeshPhysicalMaterial({
-    color: slot.color,
-    metalness: slot.metalness,
-    roughness: slot.roughness,
-    clearcoat: slot.clearcoat ?? (slot.material === "metal" ? 0.28 : 0.08),
-    transmission: slot.transmission ?? 0,
-    transparent: isTransparent,
-    opacity: slot.opacity ?? 1,
-    depthWrite: !isTransparent,
-    thickness: isTransparent ? 0.8 : 0,
-    ior: isTransparent ? 1.48 : 1.5,
+function materialForCmfSlot(
+  slot: CmfTemplate["slots"][CmfSlot],
+  presetOverride?: string,
+) {
+  return createProductMaterial({
+    ...slot,
+    materialPresetId: presetOverride ?? slot.materialPresetId,
   });
 }
 
@@ -293,6 +391,7 @@ function makeMesh(
   mode: MaterialMode,
   cmfTemplate: CmfTemplate | null,
   cmfSlot: CmfSlot,
+  materialOverrides: MaterialOverrides,
 ) {
   const geometry = new THREE.BufferGeometry();
   const index = Uint32Array.from(source.index.array);
@@ -319,7 +418,7 @@ function makeMesh(
   geometry.computeBoundingSphere();
 
   const baseMaterial = cmfTemplate
-    ? materialForCmf(cmfTemplate.slots[cmfSlot])
+    ? materialForCmfSlot(cmfTemplate.slots[cmfSlot], materialOverrides[cmfSlot])
     : materialForColor(sourceColor, mode);
   const materials: THREE.Material[] = [baseMaterial];
   const materialKeys = new Map<string, number>();
@@ -389,6 +488,7 @@ function buildGroup(
   showEdges: boolean,
   mode: MaterialMode,
   cmfTemplate: CmfTemplate | null,
+  materialOverrides: MaterialOverrides,
 ) {
   const group = new THREE.Group();
   group.name = result.root?.name || "STEP model";
@@ -405,6 +505,7 @@ function buildGroup(
         mode,
         cmfTemplate,
         slotsByMesh.get(index) ?? "primary",
+        materialOverrides,
       ),
     );
   }
@@ -441,14 +542,354 @@ function getMetrics(
   };
 }
 
+const cmfSlotLabels: Record<CmfSlot, string> = {
+  primary: "主体",
+  secondary: "结构/软胶",
+  accent: "点缀",
+};
+
+function getRenderEnvironment(key: RenderEnvironmentKey) {
+  return (
+    renderEnvironments.find((environment) => environment.key === key) ??
+    renderEnvironments[0]
+  );
+}
+
+function isImageFile(file: File) {
+  return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("图片载入失败"));
+    image.src = src;
+  });
+}
+
+function drawImageCover(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  context.drawImage(
+    image,
+    (width - drawWidth) / 2,
+    (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
+}
+
+function rgbToHex(red: number, green: number, blue: number) {
+  return `#${[red, green, blue]
+    .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace("#", "");
+  const value = Number.parseInt(normalized, 16);
+  return {
+    red: (value >> 16) & 255,
+    green: (value >> 8) & 255,
+    blue: value & 255,
+  };
+}
+
+function mixHex(a: string, b: string, amount: number) {
+  const first = hexToRgb(a);
+  const second = hexToRgb(b);
+  const mix = (from: number, to: number) => from + (to - from) * amount;
+  return rgbToHex(
+    mix(first.red, second.red),
+    mix(first.green, second.green),
+    mix(first.blue, second.blue),
+  );
+}
+
+function colorDistance(a: string, b: string) {
+  const first = hexToRgb(a);
+  const second = hexToRgb(b);
+  return Math.hypot(
+    first.red - second.red,
+    first.green - second.green,
+    first.blue - second.blue,
+  );
+}
+
+function getFallbackAccent(color: string) {
+  const { red, green, blue } = hexToRgb(color);
+  return rgbToHex(255 - red * 0.78, 255 - green * 0.78, 255 - blue * 0.78);
+}
+
+async function extractReferenceStyle(file: File): Promise<ReferenceStyle> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const size = 160;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    throw new Error("当前浏览器无法分析参考图");
+  }
+
+  drawImageCover(context, image, size, size);
+  const pixels = context.getImageData(0, 0, size, size).data;
+  const buckets = new Map<string, { count: number; red: number; green: number; blue: number }>();
+  let redSum = 0;
+  let greenSum = 0;
+  let blueSum = 0;
+  let luminanceSum = 0;
+  let luminanceSquaredSum = 0;
+  let saturationSum = 0;
+  let count = 0;
+
+  for (let index = 0; index < pixels.length; index += 16) {
+    const alpha = pixels[index + 3];
+    if (alpha < 24) {
+      continue;
+    }
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    const bucketRed = Math.round(red / 32) * 32;
+    const bucketGreen = Math.round(green / 32) * 32;
+    const bucketBlue = Math.round(blue / 32) * 32;
+    const bucketKey = `${bucketRed},${bucketGreen},${bucketBlue}`;
+    const bucket = buckets.get(bucketKey);
+
+    if (bucket) {
+      bucket.count += 1;
+      bucket.red += red;
+      bucket.green += green;
+      bucket.blue += blue;
+    } else {
+      buckets.set(bucketKey, {
+        count: 1,
+        red,
+        green,
+        blue,
+      });
+    }
+
+    redSum += red;
+    greenSum += green;
+    blueSum += blue;
+    luminanceSum += luminance;
+    luminanceSquaredSum += luminance * luminance;
+    saturationSum += saturation;
+    count += 1;
+  }
+
+  if (count === 0) {
+    throw new Error("参考图没有可分析的像素");
+  }
+
+  const average = rgbToHex(redSum / count, greenSum / count, blueSum / count);
+  const palette = Array.from(buckets.values())
+    .sort((a, b) => b.count - a.count)
+    .map((bucket) =>
+      rgbToHex(
+        bucket.red / bucket.count,
+        bucket.green / bucket.count,
+        bucket.blue / bucket.count,
+      ),
+    )
+    .reduce<string[]>((current, color) => {
+      if (current.every((entry) => colorDistance(entry, color) > 42)) {
+        current.push(color);
+      }
+      return current;
+    }, []);
+
+  while (palette.length < 3) {
+    palette.push(
+      palette.length === 0
+        ? average
+        : palette.length === 1
+          ? mixHex(average, "#f2f5f4", 0.55)
+          : getFallbackAccent(average),
+    );
+  }
+
+  const brightness = luminanceSum / count;
+  const contrast = Math.sqrt(
+    Math.max(0, luminanceSquaredSum / count - brightness * brightness),
+  );
+  const saturation = saturationSum / count;
+  const warmth =
+    ((redSum / count) - (blueSum / count)) / 255;
+  const background =
+    brightness < 0.42
+      ? mixHex(palette[0], "#11161a", 0.74)
+      : mixHex(palette[0], "#f5f7f4", 0.76);
+
+  return {
+    fileName: file.name,
+    dataUrl,
+    palette: [palette[0], palette[1], palette[2]],
+    background,
+    warmth,
+    brightness,
+    contrast,
+    saturation,
+  };
+}
+
+function makeReferenceTemplate(style: ReferenceStyle): CmfTemplate {
+  const primaryPreset =
+    style.saturation < 0.18 && style.brightness > 0.58
+      ? "sandblasted-anodized-aluminum"
+      : style.contrast > 0.25
+        ? "powder-coated-aluminum"
+        : "fine-texture-plastic";
+  const accentPreset =
+    style.saturation > 0.36 ? "gloss-plastic" : "sandblasted-anodized-aluminum";
+
+  return {
+    id: "reference-style",
+    name: "参考图风格",
+    shortName: "参考",
+    category: "reference",
+    background: style.background,
+    edgeColor: style.brightness < 0.45 ? "#d5dde1" : "#223039",
+    slots: {
+      primary: {
+        color: style.palette[0],
+        label: "主色",
+        material: primaryPreset.includes("aluminum") ? "metal" : "plastic",
+        finish: getMaterialPreset(primaryPreset).name,
+        roughness: 0.64,
+        metalness: primaryPreset.includes("aluminum") ? 0.58 : 0.03,
+        materialPresetId: primaryPreset,
+      },
+      secondary: {
+        color: style.palette[1],
+        label: "辅色",
+        material: style.brightness < 0.38 ? "rubber" : "plastic",
+        finish: style.brightness < 0.38 ? "低反射软触" : "哑面塑胶",
+        roughness: style.brightness < 0.38 ? 0.9 : 0.72,
+        metalness: 0.01,
+        materialPresetId: style.brightness < 0.38 ? "soft-touch-rubber" : "matte-plastic",
+      },
+      accent: {
+        color: style.palette[2],
+        label: "强调色",
+        material: accentPreset.includes("aluminum") ? "metal" : "plastic",
+        finish: getMaterialPreset(accentPreset).name,
+        roughness: accentPreset.includes("aluminum") ? 0.34 : 0.26,
+        metalness: accentPreset.includes("aluminum") ? 0.68 : 0.02,
+        clearcoat: accentPreset.includes("aluminum") ? 0.16 : 0.58,
+        materialPresetId: accentPreset,
+      },
+    },
+  };
+}
+
+async function compositeReferenceRender(modelDataUrl: string, style: ReferenceStyle) {
+  const [modelImage, referenceImage] = await Promise.all([
+    loadImage(modelDataUrl),
+    loadImage(style.dataUrl),
+  ]);
+  const width = modelImage.naturalWidth;
+  const height = modelImage.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("无法合成参考图渲染");
+  }
+
+  context.fillStyle = style.background;
+  context.fillRect(0, 0, width, height);
+  context.save();
+  context.filter = `blur(28px) saturate(${1 + style.saturation * 0.8})`;
+  context.globalAlpha = 0.72;
+  drawImageCover(context, referenceImage, width, height);
+  context.restore();
+
+  const linearGradient = context.createLinearGradient(0, 0, width, height);
+  linearGradient.addColorStop(0, `${style.palette[0]}d9`);
+  linearGradient.addColorStop(0.56, `${style.background}cc`);
+  linearGradient.addColorStop(1, `${style.palette[2]}aa`);
+  context.globalCompositeOperation = "source-over";
+  context.fillStyle = linearGradient;
+  context.globalAlpha = 0.38;
+  context.fillRect(0, 0, width, height);
+
+  const radialGradient = context.createRadialGradient(
+    width * 0.48,
+    height * 0.36,
+    width * 0.05,
+    width * 0.5,
+    height * 0.52,
+    width * 0.68,
+  );
+  radialGradient.addColorStop(0, "rgba(255,255,255,0.62)");
+  radialGradient.addColorStop(0.56, "rgba(255,255,255,0.12)");
+  radialGradient.addColorStop(1, "rgba(0,0,0,0.18)");
+  context.fillStyle = radialGradient;
+  context.globalAlpha = style.brightness > 0.5 ? 0.76 : 0.56;
+  context.fillRect(0, 0, width, height);
+
+  context.globalAlpha = 1;
+  context.shadowColor = "rgba(0,0,0,0.28)";
+  context.shadowBlur = Math.round(width * 0.024);
+  context.shadowOffsetY = Math.round(height * 0.018);
+  context.drawImage(modelImage, 0, 0, width, height);
+  context.shadowColor = "transparent";
+
+  const vignette = context.createRadialGradient(
+    width * 0.5,
+    height * 0.48,
+    width * 0.22,
+    width * 0.5,
+    height * 0.5,
+    width * 0.74,
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.24)");
+  context.fillStyle = vignette;
+  context.fillRect(0, 0, width, height);
+
+  return canvas.toDataURL("image/png");
+}
+
 export default function StepRenderer() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const modelRef = useRef<THREE.Group | null>(null);
+  const hemiLightRef = useRef<THREE.HemisphereLight | null>(null);
+  const keyLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const fillLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
+  const modelBoxRef = useRef<THREE.Box3 | null>(null);
   const lastResultRef = useRef<OcctResult | null>(null);
   const lastFileRef = useRef<File | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -461,6 +902,11 @@ export default function StepRenderer() {
   const [quality, setQuality] = useState<QualityKey>("balanced");
   const [materialMode, setMaterialMode] = useState<MaterialMode>("source");
   const [activeCmfId, setActiveCmfId] = useState<string | null>(null);
+  const [activeEnvironment, setActiveEnvironment] =
+    useState<RenderEnvironmentKey>("soft-studio");
+  const [selectedMaterialSlot, setSelectedMaterialSlot] =
+    useState<CmfSlot>("primary");
+  const [materialOverrides, setMaterialOverrides] = useState<MaterialOverrides>({});
   const [showEdges, setShowEdges] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
   const [background, setBackground] = useState(backgroundOptions[0].value);
@@ -468,6 +914,8 @@ export default function StepRenderer() {
   const [status, setStatus] = useState("等待 STEP 或 STP 文件");
   const [isDragging, setIsDragging] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isReferenceGenerating, setIsReferenceGenerating] = useState(false);
+  const [referenceStyle, setReferenceStyle] = useState<ReferenceStyle | null>(null);
   const [renderImages, setRenderImages] = useState<RenderImage[]>([]);
 
   const resizeRenderer = useCallback(() => {
@@ -492,6 +940,36 @@ export default function StepRenderer() {
     camera.updateProjectionMatrix();
   }, []);
 
+  const applyEnvironmentToScene = useCallback((environmentKey: RenderEnvironmentKey) => {
+    const scene = sceneRef.current;
+    const renderer = rendererRef.current;
+    const hemiLight = hemiLightRef.current;
+    const keyLight = keyLightRef.current;
+    const fillLight = fillLightRef.current;
+    const environment = getRenderEnvironment(environmentKey);
+
+    if (scene) {
+      scene.background = new THREE.Color(environment.background);
+    }
+    if (renderer) {
+      renderer.setClearColor(environment.background);
+      renderer.toneMappingExposure = environment.exposure;
+    }
+    if (hemiLight) {
+      hemiLight.color.set(environment.ambient);
+      hemiLight.groundColor.set(environment.ground);
+      hemiLight.intensity = environment.hemiIntensity;
+    }
+    if (keyLight) {
+      keyLight.color.set(environment.keyLight);
+      keyLight.intensity = environment.keyIntensity;
+    }
+    if (fillLight) {
+      fillLight.color.set(environment.fill);
+      fillLight.intensity = environment.fillIntensity;
+    }
+  }, []);
+
   const frameModel = useCallback((directionTuple: [number, number, number]) => {
     const group = modelRef.current;
     const camera = cameraRef.current;
@@ -500,28 +978,34 @@ export default function StepRenderer() {
       return;
     }
 
-    const box = new THREE.Box3().setFromObject(group);
+    resizeRenderer();
+    const box = modelBoxRef.current ?? new THREE.Box3().setFromObject(group);
+    if (box.isEmpty()) {
+      return;
+    }
     const center = new THREE.Vector3();
-    const size = new THREE.Vector3();
-    box.getCenter(center);
-    box.getSize(size);
+    const sphere = new THREE.Sphere();
+    box.getBoundingSphere(sphere);
+    center.copy(sphere.center);
 
-    const maxDimension = Math.max(size.x, size.y, size.z, 1);
-    const distance =
-      (maxDimension / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))) *
-      2.15;
+    const radius = Math.max(sphere.radius, 1);
+    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+    const horizontalFov =
+      2 * Math.atan(Math.tan(verticalFov / 2) * Math.max(camera.aspect, 0.01));
+    const fitFov = Math.max(Math.min(verticalFov, horizontalFov), 0.1);
+    const distance = (radius / Math.sin(fitFov / 2)) * 1.18;
     const direction = new THREE.Vector3(...directionTuple).normalize();
 
     camera.position.copy(center).add(direction.multiplyScalar(distance));
-    camera.near = Math.max(maxDimension / 2000, 0.001);
-    camera.far = Math.max(maxDimension * 200, 1000);
+    camera.near = Math.max(radius / 1000, 0.001);
+    camera.far = Math.max(distance + radius * 12, 1000);
     camera.updateProjectionMatrix();
 
     controls.target.copy(center);
-    controls.minDistance = maxDimension * 0.025;
-    controls.maxDistance = maxDimension * 30;
+    controls.minDistance = radius * 0.08;
+    controls.maxDistance = radius * 28;
     controls.update();
-  }, []);
+  }, [resizeRenderer]);
 
   const focusModel = useCallback(() => {
     frameModel(renderViews[0].direction);
@@ -548,7 +1032,36 @@ export default function StepRenderer() {
         templateOverride === undefined
           ? getCmfTemplate(activeCmfId)
           : templateOverride;
-      const group = buildGroup(result, showEdges, materialMode, cmfTemplate);
+      const group = buildGroup(
+        result,
+        showEdges,
+        materialMode,
+        cmfTemplate,
+        materialOverrides,
+      );
+      const sourceBox = new THREE.Box3().setFromObject(group);
+      const sourceCenter = new THREE.Vector3();
+      sourceBox.getCenter(sourceCenter);
+      group.position.sub(sourceCenter);
+      group.updateMatrixWorld(true);
+
+      const normalizedBox = new THREE.Box3().setFromObject(group);
+      const normalizedSize = new THREE.Vector3();
+      normalizedBox.getSize(normalizedSize);
+      modelBoxRef.current = normalizedBox.clone();
+
+      const grid = gridRef.current;
+      if (grid) {
+        const maxDimension = Math.max(
+          normalizedSize.x,
+          normalizedSize.y,
+          normalizedSize.z,
+          1,
+        );
+        grid.scale.setScalar(Math.max(maxDimension / 9, 0.4));
+        grid.position.z = normalizedBox.min.z - Math.max(maxDimension * 0.012, 0.004);
+      }
+
       scene.add(group);
       modelRef.current = group;
       lastResultRef.current = result;
@@ -559,7 +1072,7 @@ export default function StepRenderer() {
       setPhase("ready");
       setStatus(cmfTemplate ? `已应用 ${cmfTemplate.name}` : "渲染完成");
     },
-    [activeCmfId, focusModel, materialMode, showEdges],
+    [activeCmfId, focusModel, materialMode, materialOverrides, showEdges],
   );
 
   const parseFile = useCallback(
@@ -632,6 +1145,43 @@ export default function StepRenderer() {
     await parseFile(file);
   }, [parseFile]);
 
+  const processReferenceFile = useCallback(async (file: File) => {
+    if (!isImageFile(file)) {
+      setStatus("参考图仅支持图片文件");
+      return;
+    }
+
+    try {
+      setStatus("正在分析参考图风格");
+      const style = await extractReferenceStyle(file);
+      setReferenceStyle(style);
+      setBackground(style.background);
+      setActiveEnvironment(
+        style.brightness < 0.38
+          ? "black-contrast"
+          : style.warmth > 0.08
+            ? "warm-showcase"
+            : style.contrast > 0.24
+              ? "cool-tech"
+              : "soft-studio",
+      );
+      setStatus(`已读取参考图：${file.name}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "参考图分析失败");
+    }
+  }, []);
+
+  const handleInputFile = useCallback(
+    (file: File) => {
+      if (isImageFile(file)) {
+        void processReferenceFile(file);
+        return;
+      }
+      void parseFile(file);
+    },
+    [parseFile, processReferenceFile],
+  );
+
   const downloadPng = useCallback(() => {
     const renderer = rendererRef.current;
     const scene = sceneRef.current;
@@ -648,20 +1198,57 @@ export default function StepRenderer() {
     anchor.click();
   }, [metrics]);
 
-  const captureCurrentCanvas = useCallback(
-    (template: CmfTemplate, view: (typeof renderViews)[number]) => {
+  const captureCanvasDataUrl = useCallback(
+    (view: (typeof renderViews)[number], backgroundColor: string | null) => {
       const renderer = rendererRef.current;
       const scene = sceneRef.current;
       const camera = cameraRef.current;
-      const file = lastFileRef.current;
-      if (!renderer || !scene || !camera || !file) {
+      if (!renderer || !scene || !camera) {
         return null;
       }
 
+      const previousBackground = scene.background;
+      const previousClearColor = new THREE.Color();
+      renderer.getClearColor(previousClearColor);
+      const previousClearAlpha = renderer.getClearAlpha();
+      const grid = gridRef.current;
+      const previousGridVisible = grid?.visible ?? true;
+
       frameModel(view.direction);
-      scene.background = new THREE.Color(template.background);
-      renderer.setClearColor(template.background);
+      if (backgroundColor === null) {
+        scene.background = null;
+        renderer.setClearColor(0x000000, 0);
+        if (grid) {
+          grid.visible = false;
+        }
+      } else {
+        scene.background = new THREE.Color(backgroundColor);
+        renderer.setClearColor(backgroundColor, 1);
+      }
       renderer.render(scene, camera);
+      const dataUrl = renderer.domElement.toDataURL("image/png");
+
+      scene.background = previousBackground;
+      renderer.setClearColor(previousClearColor, previousClearAlpha);
+      if (grid) {
+        grid.visible = previousGridVisible;
+      }
+      return dataUrl;
+    },
+    [frameModel],
+  );
+
+  const captureCurrentCanvas = useCallback(
+    (template: CmfTemplate, view: (typeof renderViews)[number]) => {
+      const file = lastFileRef.current;
+      if (!file) {
+        return null;
+      }
+
+      const dataUrl = captureCanvasDataUrl(view, template.background);
+      if (!dataUrl) {
+        return null;
+      }
 
       const fileStem = slugify(file.name) || "step-render";
       const fileName = `${fileStem}-${slugify(template.shortName)}-${view.key}.png`;
@@ -673,11 +1260,81 @@ export default function StepRenderer() {
         viewKey: view.key,
         viewLabel: view.label,
         fileName,
-        dataUrl: renderer.domElement.toDataURL("image/png"),
+        dataUrl,
       } satisfies RenderImage;
     },
-    [frameModel],
+    [captureCanvasDataUrl],
   );
+
+  const generateReferenceRenders = useCallback(async () => {
+    const result = lastResultRef.current;
+    const file = lastFileRef.current;
+    const style = referenceStyle;
+    if (!result || !file) {
+      setPhase("error");
+      setStatus("请先载入 STEP 文件");
+      return;
+    }
+    if (!style) {
+      setStatus("请先拖入参考图");
+      return;
+    }
+
+    setIsReferenceGenerating(true);
+    try {
+      const template = makeReferenceTemplate(style);
+      const environmentKey =
+        style.brightness < 0.38
+          ? "black-contrast"
+          : style.warmth > 0.08
+            ? "warm-showcase"
+            : style.contrast > 0.24
+              ? "cool-tech"
+              : "soft-studio";
+      setActiveEnvironment(environmentKey);
+      applyEnvironmentToScene(environmentKey);
+      setBackground(style.background);
+      setStatus("正在生成参考图风格渲染");
+      replaceModel(result, file, lastElapsedRef.current, template);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+      const fileStem = slugify(file.name) || "step-render";
+      const stamp = Date.now();
+      const captures: RenderImage[] = [];
+      for (const view of renderViews) {
+        const modelDataUrl = captureCanvasDataUrl(view, null);
+        if (!modelDataUrl) {
+          continue;
+        }
+        const dataUrl = await compositeReferenceRender(modelDataUrl, style);
+        captures.push({
+          id: `reference-${view.key}-${stamp}`,
+          templateId: "reference-style",
+          templateName: "参考图风格",
+          viewKey: view.key,
+          viewLabel: view.label,
+          fileName: `${fileStem}-reference-${view.key}.png`,
+          dataUrl,
+        });
+      }
+
+      setRenderImages((current) => [
+        ...captures,
+        ...current.filter((image) => image.templateId !== "reference-style"),
+      ]);
+      setStatus(`已生成参考图风格 ${captures.length} 张图`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "参考图渲染失败");
+    } finally {
+      setIsReferenceGenerating(false);
+    }
+  }, [
+    applyEnvironmentToScene,
+    captureCanvasDataUrl,
+    referenceStyle,
+    replaceModel,
+  ]);
 
   const applyCmfTemplate = useCallback((template: CmfTemplate) => {
     if (!lastResultRef.current) {
@@ -687,6 +1344,7 @@ export default function StepRenderer() {
     }
 
     setActiveCmfId(template.id);
+    setMaterialOverrides({});
     setBackground(template.background);
     setStatus(`已应用 ${template.name}`);
   }, []);
@@ -809,6 +1467,7 @@ export default function StepRenderer() {
       renderer = new THREE.WebGLRenderer({
         antialias: true,
         preserveDrawingBuffer: true,
+        alpha: true,
       });
     } catch {
       window.setTimeout(() => {
@@ -838,20 +1497,25 @@ export default function StepRenderer() {
 
     const ambient = new THREE.HemisphereLight("#ffffff", "#8d999f", 1.6);
     scene.add(ambient);
+    hemiLightRef.current = ambient;
 
     const keyLight = new THREE.DirectionalLight("#ffffff", 2.8);
     keyLight.position.set(6, -8, 9);
     keyLight.castShadow = true;
     scene.add(keyLight);
+    keyLightRef.current = keyLight;
 
     const fillLight = new THREE.DirectionalLight("#b9d9d0", 1.3);
     fillLight.position.set(-6, 5, 4);
     scene.add(fillLight);
+    fillLightRef.current = fillLight;
 
     const grid = new THREE.GridHelper(12, 12, "#91a1a9", "#d1d8dc");
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -0.002;
     scene.add(grid);
+    gridRef.current = grid;
+    applyEnvironmentToScene("soft-studio");
 
     const resizeObserver = new ResizeObserver(resizeRenderer);
     resizeObserver.observe(mount);
@@ -882,12 +1546,21 @@ export default function StepRenderer() {
       cameraRef.current = null;
       controlsRef.current = null;
       modelRef.current = null;
+      hemiLightRef.current = null;
+      keyLightRef.current = null;
+      fillLightRef.current = null;
+      gridRef.current = null;
+      modelBoxRef.current = null;
     };
-  }, [resizeRenderer]);
+  }, [applyEnvironmentToScene, resizeRenderer]);
 
   useEffect(() => {
     autoRotateRef.current = autoRotate;
   }, [autoRotate]);
+
+  useEffect(() => {
+    applyEnvironmentToScene(activeEnvironment);
+  }, [activeEnvironment, applyEnvironmentToScene]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -905,10 +1578,15 @@ export default function StepRenderer() {
   }, [activeCmfId, materialMode, showEdges, rebuildCurrentModel]);
 
   const activeCmfTemplate = getCmfTemplate(activeCmfId);
+  const activeEnvironmentConfig = getRenderEnvironment(activeEnvironment);
+  const activeSlotPresetId =
+    materialOverrides[selectedMaterialSlot] ??
+    activeCmfTemplate?.slots[selectedMaterialSlot]?.materialPresetId;
+  const generationBusy = isGenerating || isReferenceGenerating;
 
   return (
     <main
-      className="flex min-h-screen flex-col bg-[#eef2f3] text-[#172026] lg:flex-row"
+      className="flex min-h-screen flex-col bg-[#eef2f3] text-[#172026] lg:h-[100dvh] lg:min-h-0 lg:flex-row lg:overflow-hidden"
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragging(true);
@@ -923,11 +1601,11 @@ export default function StepRenderer() {
         setIsDragging(false);
         const file = event.dataTransfer.files[0];
         if (file) {
-          void parseFile(file);
+          handleInputFile(file);
         }
       }}
     >
-      <aside className="flex w-full shrink-0 flex-col border-b border-[#d3dcdf] bg-white lg:h-screen lg:w-[340px] lg:border-b-0 lg:border-r">
+      <aside className="flex w-full shrink-0 flex-col border-b border-[#d3dcdf] bg-white lg:h-full lg:w-[340px] lg:border-b-0 lg:border-r">
         <div className="border-b border-[#dfe6e8] px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="grid size-9 place-items-center rounded-lg bg-[#244f57] text-white">
@@ -940,7 +1618,7 @@ export default function StepRenderer() {
           </div>
         </div>
 
-        <div className="grid gap-5 overflow-y-auto px-5 py-5 sm:grid-cols-2 lg:flex lg:flex-1 lg:flex-col">
+        <div className="grid gap-4 overflow-y-auto px-4 py-4 sm:grid-cols-2 lg:flex lg:flex-1 lg:flex-col">
           <section className="rounded-lg border border-[#d8e1e4] bg-[#f9fbfb] p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
               <FileUp size={16} aria-hidden="true" />
@@ -975,7 +1653,7 @@ export default function StepRenderer() {
               载入示例
             </button>
             <div className="mt-3 rounded-lg border border-dashed border-[#b8c6ca] bg-white px-3 py-4 text-center text-sm text-[#66747b]">
-              拖放 .step 或 .stp
+              拖放 STEP / STP
             </div>
           </section>
 
@@ -1062,7 +1740,7 @@ export default function StepRenderer() {
               <button
                 className="flex h-8 items-center gap-1 rounded-lg border border-[#cbd8dc] bg-white px-2 text-xs font-semibold text-[#243238] transition hover:bg-[#edf4f4] disabled:cursor-not-allowed disabled:opacity-45"
                 type="button"
-                disabled={phase !== "ready" || isGenerating}
+                disabled={phase !== "ready" || generationBusy}
                 onClick={() => void generateAllCmfRenders()}
               >
                 {isGenerating ? (
@@ -1087,7 +1765,7 @@ export default function StepRenderer() {
                   <button
                     className="flex min-w-0 items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-45"
                     type="button"
-                    disabled={phase !== "ready" || isGenerating}
+                    disabled={phase !== "ready" || generationBusy}
                     onClick={() => applyCmfTemplate(template)}
                   >
                     <span className="flex shrink-0 overflow-hidden rounded-md border border-black/10">
@@ -1116,7 +1794,7 @@ export default function StepRenderer() {
                     className="grid size-10 place-items-center rounded-lg border border-[#cbd8dc] bg-[#f7faf9] text-[#243238] transition hover:bg-[#edf4f4] disabled:cursor-not-allowed disabled:opacity-45"
                     type="button"
                     title={`生成 ${template.name}`}
-                    disabled={phase !== "ready" || isGenerating}
+                    disabled={phase !== "ready" || generationBusy}
                     onClick={() => void generateTemplateRenders(template)}
                   >
                     {isGenerating && activeCmfId === template.id ? (
@@ -1126,6 +1804,95 @@ export default function StepRenderer() {
                     )}
                   </button>
                 </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-[#d8e1e4] bg-[#f9fbfb] p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <Layers size={16} aria-hidden="true" />
+              材质库
+            </div>
+            <div className="grid grid-cols-3 rounded-lg border border-[#cbd8dc] bg-white p-1">
+              {(["primary", "secondary", "accent"] as CmfSlot[]).map((slot) => (
+                <button
+                  key={slot}
+                  className={`h-9 rounded-md text-sm font-semibold transition ${
+                    selectedMaterialSlot === slot
+                      ? "bg-[#244f57] text-white"
+                      : "text-[#59686f] hover:bg-[#edf4f4]"
+                  }`}
+                  type="button"
+                  onClick={() => setSelectedMaterialSlot(slot)}
+                >
+                  {cmfSlotLabels[slot]}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              {materialPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  className={`rounded-lg border bg-white p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                    activeSlotPresetId === preset.id
+                      ? "border-[#244f57] ring-2 ring-[#d7e8e6]"
+                      : "border-[#cbd8dc] hover:bg-[#edf4f4]"
+                  }`}
+                  type="button"
+                  disabled={phase !== "ready"}
+                  onClick={() => {
+                    if (!activeCmfId) {
+                      setActiveCmfId(cmfTemplates[0].id);
+                      setBackground(cmfTemplates[0].background);
+                    }
+                    setMaterialOverrides((current) => ({
+                      ...current,
+                      [selectedMaterialSlot]: preset.id,
+                    }));
+                    setStatus(`${cmfSlotLabels[selectedMaterialSlot]}：${preset.name}`);
+                  }}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">{preset.name}</span>
+                    <span className="rounded-md bg-[#eef2f3] px-2 py-0.5 text-xs font-semibold text-[#59686f]">
+                      {preset.category}
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-[#66747b]">
+                    {preset.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-[#d8e1e4] bg-[#f9fbfb] p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <SlidersHorizontal size={16} aria-hidden="true" />
+              环境
+            </div>
+            <div className="grid gap-2">
+              {renderEnvironments.map((environment) => (
+                <button
+                  key={environment.key}
+                  className={`flex h-10 items-center justify-between rounded-lg border px-3 text-sm font-semibold transition ${
+                    activeEnvironment === environment.key
+                      ? "border-[#244f57] bg-[#e4f0ee] text-[#20363b]"
+                      : "border-[#cbd8dc] bg-white text-[#59686f] hover:bg-[#edf4f4]"
+                  }`}
+                  type="button"
+                  onClick={() => {
+                    setActiveEnvironment(environment.key);
+                    setBackground(environment.background);
+                  }}
+                >
+                  {environment.label}
+                  <span
+                    className="size-4 rounded-full border border-black/10"
+                    style={{ backgroundColor: environment.background }}
+                  />
+                </button>
               ))}
             </div>
           </section>
@@ -1186,6 +1953,185 @@ export default function StepRenderer() {
             )}
           </section>
 
+        </div>
+      </aside>
+
+      <section className="flex min-h-[620px] min-w-0 flex-1 flex-col lg:h-full lg:min-h-0">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#d3dcdf] bg-white px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            {phase === "loading" ? (
+              <LoaderCircle
+                className="animate-spin text-[#244f57]"
+                size={19}
+                aria-hidden="true"
+              />
+            ) : (
+              <Camera className="text-[#244f57]" size={19} aria-hidden="true" />
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{status}</div>
+              <div className="text-xs text-[#66747b]">
+                {phase === "ready"
+                  ? `${activeEnvironmentConfig.label} / ${activeCmfTemplate?.name ?? "原始材质"}`
+                  : "本地浏览器解析"}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-1 rounded-lg border border-[#cbd8dc] bg-[#f8fbfb] p-1 md:flex">
+              {renderViews.map((view) => (
+                <button
+                  key={view.key}
+                  className="h-8 rounded-md px-2 text-xs font-semibold text-[#59686f] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
+                  type="button"
+                  disabled={phase !== "ready"}
+                  onClick={() => frameModel(view.direction)}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+            <button
+              className="grid size-10 place-items-center rounded-lg border border-[#cbd8dc] bg-white text-[#243238] transition hover:bg-[#edf4f4] disabled:cursor-not-allowed disabled:opacity-45"
+              type="button"
+              title="重置视角"
+              disabled={phase !== "ready"}
+              onClick={focusModel}
+            >
+              <RotateCcw size={17} aria-hidden="true" />
+            </button>
+            <button
+              className="grid size-10 place-items-center rounded-lg border border-[#cbd8dc] bg-white text-[#243238] transition hover:bg-[#edf4f4] disabled:cursor-not-allowed disabled:opacity-45"
+              type="button"
+              title="下载 PNG"
+              disabled={phase !== "ready"}
+              onClick={downloadPng}
+            >
+              <Download size={17} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        <div className="relative min-h-0 flex-1">
+          <div ref={mountRef} className="absolute inset-0" data-render-viewport />
+
+          {phase === "empty" && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <div className="rounded-lg border border-[#d8e1e4] bg-white/92 px-7 py-6 text-center shadow-sm">
+                <Box className="mx-auto mb-3 text-[#244f57]" size={34} />
+                <div className="text-base font-semibold">选择 STEP 文件</div>
+                <div className="mt-1 text-sm text-[#66747b]">
+                  支持 .step 和 .stp
+                </div>
+              </div>
+            </div>
+          )}
+
+          {phase === "loading" && (
+            <div className="absolute inset-0 grid place-items-center bg-white/40 backdrop-blur-[1px]">
+              <div className="rounded-lg border border-[#d8e1e4] bg-white px-6 py-5 text-center shadow-sm">
+                <LoaderCircle
+                  className="mx-auto mb-3 animate-spin text-[#244f57]"
+                  size={30}
+                />
+                <div className="font-semibold">解析中</div>
+              </div>
+            </div>
+          )}
+
+          {isDragging && (
+            <div className="absolute inset-4 grid place-items-center rounded-lg border-2 border-dashed border-[#244f57] bg-[#e3f1ef]/80 text-lg font-semibold text-[#20363b]">
+              释放 STEP 或图片
+            </div>
+          )}
+        </div>
+      </section>
+
+      <aside className="flex w-full shrink-0 flex-col border-t border-[#d3dcdf] bg-white lg:h-full lg:w-[340px] lg:border-l lg:border-t-0">
+        <div className="border-b border-[#dfe6e8] px-4 py-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ImageDown size={16} aria-hidden="true" />
+            输出
+          </div>
+        </div>
+        <div className="grid gap-4 overflow-y-auto px-4 py-4 sm:grid-cols-2 lg:flex lg:flex-1 lg:flex-col">
+          <section className="rounded-lg border border-[#d8e1e4] bg-[#f9fbfb] p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Sparkles size={16} aria-hidden="true" />
+                参考图
+              </div>
+              <button
+                className="flex h-8 items-center gap-1 rounded-lg border border-[#cbd8dc] bg-white px-2 text-xs font-semibold text-[#243238] transition hover:bg-[#edf4f4]"
+                type="button"
+                onClick={() => referenceInputRef.current?.click()}
+              >
+                <FileUp size={14} />
+                选择
+              </button>
+            </div>
+            <input
+              ref={referenceInputRef}
+              className="hidden"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void processReferenceFile(file);
+                }
+              }}
+            />
+
+            {referenceStyle ? (
+              <div className="grid gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  alt="参考图"
+                  className="h-28 w-full rounded-lg border border-[#d8e1e4] object-cover"
+                  src={referenceStyle.dataUrl}
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  {referenceStyle.palette.map((color) => (
+                    <span
+                      key={color}
+                      className="h-8 rounded-lg border border-black/10"
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-[72px_1fr] gap-x-3 gap-y-1 text-xs">
+                  <span className="text-[#66747b]">文件</span>
+                  <span className="min-w-0 truncate font-semibold">
+                    {referenceStyle.fileName}
+                  </span>
+                  <span className="text-[#66747b]">亮度</span>
+                  <span>{Math.round(referenceStyle.brightness * 100)}%</span>
+                  <span className="text-[#66747b]">饱和度</span>
+                  <span>{Math.round(referenceStyle.saturation * 100)}%</span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-[#b8c6ca] bg-white px-3 py-8 text-center text-sm text-[#66747b]">
+                拖放图片
+              </div>
+            )}
+
+            <button
+              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#244f57] px-3 text-sm font-semibold text-white transition hover:bg-[#1d444b] disabled:cursor-not-allowed disabled:opacity-45"
+              type="button"
+              disabled={phase !== "ready" || !referenceStyle || generationBusy}
+              onClick={() => void generateReferenceRenders()}
+            >
+              {isReferenceGenerating ? (
+                <LoaderCircle className="animate-spin" size={16} />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              生成参考图渲染
+            </button>
+          </section>
+
           <section className="rounded-lg border border-[#d8e1e4] bg-[#f9fbfb] p-4 sm:col-span-2 lg:col-span-1">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1215,16 +2161,16 @@ export default function StepRenderer() {
             </div>
 
             {renderImages.length ? (
-              <div className="grid max-h-[420px] gap-2 overflow-y-auto pr-1">
+              <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1">
                 {renderImages.map((image) => (
                   <div
                     key={image.id}
-                    className="grid grid-cols-[92px_1fr_38px] items-center gap-2 rounded-lg border border-[#d8e1e4] bg-white p-2"
+                    className="grid grid-cols-[104px_1fr_38px] items-center gap-2 rounded-lg border border-[#d8e1e4] bg-white p-2"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       alt={`${image.templateName} ${image.viewLabel}`}
-                      className="h-14 w-[92px] rounded-md bg-[#eef2f3] object-cover"
+                      className="h-16 w-[104px] rounded-md bg-[#eef2f3] object-cover"
                       src={image.dataUrl}
                     />
                     <div className="min-w-0">
@@ -1247,89 +2193,13 @@ export default function StepRenderer() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-[#b8c6ca] bg-white px-3 py-5 text-center text-sm text-[#66747b]">
+              <div className="rounded-lg border border-dashed border-[#b8c6ca] bg-white px-3 py-8 text-center text-sm text-[#66747b]">
                 暂无图片
               </div>
             )}
           </section>
         </div>
       </aside>
-
-      <section className="flex min-h-[560px] min-w-0 flex-1 flex-col lg:min-h-screen">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#d3dcdf] bg-white px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            {phase === "loading" ? (
-              <LoaderCircle
-                className="animate-spin text-[#244f57]"
-                size={19}
-                aria-hidden="true"
-              />
-            ) : (
-              <Camera className="text-[#244f57]" size={19} aria-hidden="true" />
-            )}
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{status}</div>
-              <div className="text-xs text-[#66747b]">
-                {phase === "ready" ? "鼠标拖拽查看模型" : "本地浏览器解析"}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="grid size-10 place-items-center rounded-lg border border-[#cbd8dc] bg-white text-[#243238] transition hover:bg-[#edf4f4] disabled:cursor-not-allowed disabled:opacity-45"
-              type="button"
-              title="重置视角"
-              disabled={phase !== "ready"}
-              onClick={focusModel}
-            >
-              <RotateCcw size={17} aria-hidden="true" />
-            </button>
-            <button
-              className="grid size-10 place-items-center rounded-lg border border-[#cbd8dc] bg-white text-[#243238] transition hover:bg-[#edf4f4] disabled:cursor-not-allowed disabled:opacity-45"
-              type="button"
-              title="下载 PNG"
-              disabled={phase !== "ready"}
-              onClick={downloadPng}
-            >
-              <Download size={17} aria-hidden="true" />
-            </button>
-          </div>
-        </header>
-
-        <div className="relative min-h-[520px] flex-1 lg:min-h-0">
-          <div ref={mountRef} className="absolute inset-0" />
-
-          {phase === "empty" && (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center">
-              <div className="rounded-lg border border-[#d8e1e4] bg-white/92 px-7 py-6 text-center shadow-sm">
-                <Box className="mx-auto mb-3 text-[#244f57]" size={34} />
-                <div className="text-base font-semibold">选择 STEP 文件</div>
-                <div className="mt-1 text-sm text-[#66747b]">
-                  支持 .step 和 .stp
-                </div>
-              </div>
-            </div>
-          )}
-
-          {phase === "loading" && (
-            <div className="absolute inset-0 grid place-items-center bg-white/40 backdrop-blur-[1px]">
-              <div className="rounded-lg border border-[#d8e1e4] bg-white px-6 py-5 text-center shadow-sm">
-                <LoaderCircle
-                  className="mx-auto mb-3 animate-spin text-[#244f57]"
-                  size={30}
-                />
-                <div className="font-semibold">解析中</div>
-              </div>
-            </div>
-          )}
-
-          {isDragging && (
-            <div className="absolute inset-4 grid place-items-center rounded-lg border-2 border-dashed border-[#244f57] bg-[#e3f1ef]/80 text-lg font-semibold text-[#20363b]">
-              释放文件
-            </div>
-          )}
-        </div>
-      </section>
     </main>
   );
 }

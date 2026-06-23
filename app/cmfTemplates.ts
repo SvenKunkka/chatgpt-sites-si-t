@@ -10,6 +10,7 @@ export type CmfFinish = {
   clearcoat?: number;
   transmission?: number;
   opacity?: number;
+  materialPresetId?: string;
 };
 
 export type CmfTemplate = {
@@ -38,6 +39,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "细砂哑面塑胶",
         roughness: 0.76,
         metalness: 0.02,
+        materialPresetId: "fine-texture-plastic",
       },
       secondary: {
         color: "#c6ccd0",
@@ -46,6 +48,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "低光泽塑胶",
         roughness: 0.58,
         metalness: 0.03,
+        materialPresetId: "matte-plastic",
       },
       accent: {
         color: "#ff6b21",
@@ -54,6 +57,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "半哑撞色件",
         roughness: 0.46,
         metalness: 0.02,
+        materialPresetId: "gloss-plastic",
       },
     },
   },
@@ -72,6 +76,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "丝滑哑面塑胶",
         roughness: 0.68,
         metalness: 0.01,
+        materialPresetId: "matte-plastic",
       },
       secondary: {
         color: "#20242a",
@@ -80,6 +85,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "微纹理软胶",
         roughness: 0.84,
         metalness: 0,
+        materialPresetId: "soft-touch-rubber",
       },
       accent: {
         color: "#b7ff2a",
@@ -88,6 +94,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "半光色件",
         roughness: 0.4,
         metalness: 0.02,
+        materialPresetId: "gloss-plastic",
       },
     },
   },
@@ -109,6 +116,7 @@ export const cmfTemplates: CmfTemplate[] = [
         clearcoat: 0.72,
         transmission: 0.18,
         opacity: 0.58,
+        materialPresetId: "transparent-pc",
       },
       secondary: {
         color: "#171b20",
@@ -117,6 +125,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "深黑哑面塑胶",
         roughness: 0.72,
         metalness: 0.02,
+        materialPresetId: "matte-plastic",
       },
       accent: {
         color: "#6bb7ff",
@@ -126,6 +135,7 @@ export const cmfTemplates: CmfTemplate[] = [
         roughness: 0.24,
         metalness: 0,
         clearcoat: 0.58,
+        materialPresetId: "transparent-pc",
       },
     },
   },
@@ -144,6 +154,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "细喷砂阳极铝",
         roughness: 0.34,
         metalness: 0.72,
+        materialPresetId: "sandblasted-anodized-aluminum",
       },
       secondary: {
         color: "#22272b",
@@ -152,6 +163,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "防滑软胶",
         roughness: 0.88,
         metalness: 0,
+        materialPresetId: "soft-touch-rubber",
       },
       accent: {
         color: "#166dca",
@@ -160,6 +172,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "蓝色阳极铝",
         roughness: 0.28,
         metalness: 0.68,
+        materialPresetId: "sandblasted-anodized-aluminum",
       },
     },
   },
@@ -178,6 +191,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "抗刮哑面塑胶",
         roughness: 0.78,
         metalness: 0.02,
+        materialPresetId: "fine-texture-plastic",
       },
       secondary: {
         color: "#37423d",
@@ -186,6 +200,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "粗纹理软胶",
         roughness: 0.92,
         metalness: 0,
+        materialPresetId: "soft-touch-rubber",
       },
       accent: {
         color: "#d9ff3f",
@@ -194,6 +209,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "高识别色件",
         roughness: 0.5,
         metalness: 0.01,
+        materialPresetId: "gloss-plastic",
       },
     },
   },
@@ -212,6 +228,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "细腻哑面塑胶",
         roughness: 0.7,
         metalness: 0.01,
+        materialPresetId: "matte-plastic",
       },
       secondary: {
         color: "#748176",
@@ -220,6 +237,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "低饱和哑面件",
         roughness: 0.66,
         metalness: 0.02,
+        materialPresetId: "matte-plastic",
       },
       accent: {
         color: "#e5e0d2",
@@ -228,6 +246,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "暖调点缀件",
         roughness: 0.62,
         metalness: 0.01,
+        materialPresetId: "matte-plastic",
       },
     },
   },
@@ -246,6 +265,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "亲肤微纹理塑胶",
         roughness: 0.74,
         metalness: 0.02,
+        materialPresetId: "fine-texture-plastic",
       },
       secondary: {
         color: "#d2b98d",
@@ -254,6 +274,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "香槟阳极金属",
         roughness: 0.32,
         metalness: 0.62,
+        materialPresetId: "sandblasted-anodized-aluminum",
       },
       accent: {
         color: "#2d2926",
@@ -262,6 +283,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "细纹理软触件",
         roughness: 0.86,
         metalness: 0,
+        materialPresetId: "soft-touch-rubber",
       },
     },
   },
@@ -280,6 +302,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "半哑工程塑胶",
         roughness: 0.56,
         metalness: 0.02,
+        materialPresetId: "matte-plastic",
       },
       secondary: {
         color: "#1e242b",
@@ -288,6 +311,7 @@ export const cmfTemplates: CmfTemplate[] = [
         finish: "深色结构件",
         roughness: 0.64,
         metalness: 0.04,
+        materialPresetId: "fine-texture-plastic",
       },
       accent: {
         color: "#245cff",
@@ -297,6 +321,7 @@ export const cmfTemplates: CmfTemplate[] = [
         roughness: 0.36,
         metalness: 0.03,
         clearcoat: 0.34,
+        materialPresetId: "gloss-plastic",
       },
     },
   },
