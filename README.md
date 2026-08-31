@@ -1,70 +1,54 @@
-# vinext-starter
+# STEP CMF Render Studio
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+一个运行在浏览器中的 STEP/STP 产品渲染工作台。无需安装桌面 CAD 软件，即可载入三维模型、调整材质与灯光，并导出适合评审或展示的产品渲染图。
 
-## Prerequisites
+![STEP CMF Render Studio 界面](public/screenshot.jpeg)
 
-- Node.js `>=22.13.0`
+## 功能
 
-## Quick Start
+- 在浏览器中解析并预览 STEP/STP 模型
+- 提供快速、均衡、精细三档几何解析质量
+- 切换源材质、棚拍材质与白模效果
+- 应用 CMF 配色模板和材质预设
+- 选择白底电商、黑底高反差、暖光展示等渲染环境
+- 根据参考图提取配色与视觉风格
+- 生成三分之四、正面、俯视等视角图片
+- 导出单张 PNG 或批量 ZIP
+
+## 技术栈
+
+- Next.js 16、React 19、TypeScript
+- vinext、Vite、Cloudflare Workers
+- Three.js、occt-import-js、Web Workers
+- Tailwind CSS
+
+## 本地运行
+
+需要 Node.js `>=22.13.0`。
 
 ```bash
 npm install
 npm run dev
+```
+
+生产构建：
+
+```bash
 npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+## 项目结构
 
-## Included Shape
+- `app/StepRenderer.tsx`：文件载入、交互和渲染工作台
+- `app/materialSystem.ts`：材质预设与材质创建逻辑
+- `app/cmfTemplates.ts`：CMF 配色模板
+- `public/step-worker.js`：浏览器端 STEP/STP 解析 Worker
+- `.openai/hosting.json`：OpenAI Workspace Sites 托管配置
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+## 数据库（可选）
 
-## Workspace Auth Headers
+项目已预留 Cloudflare D1 与 Drizzle 支持，但当前核心渲染流程不依赖数据库。修改 `db/schema.ts` 后可运行：
 
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm run db:generate
 ```
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
