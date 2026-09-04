@@ -1,5 +1,13 @@
 # STEP CMF Render Studio
 
+## English Overview
+
+STEP CMF Render Studio is a browser-based product-rendering workstation for STEP/STP models. It lets users inspect CAD geometry, experiment with color, material, and finish (CMF) choices, adjust lighting, and export presentation-ready images without installing a desktop CAD package.
+
+The workspace provides fast, balanced, and fine geometry-processing presets; original, studio, and clay material modes; reusable CMF palettes and material presets; white-background, high-contrast, and warm-light environments; reference-image color and style extraction; multiple camera viewpoints; and single PNG or batch ZIP export. STEP parsing runs in a Web Worker using OpenCascade, while Three.js handles the interactive renderer.
+
+The application is built with Next.js 16, React 19, TypeScript, Vinext, Vite, Cloudflare Workers, Three.js, `occt-import-js`, and Tailwind CSS. Node.js 22.13 or newer is required. Run `npm install` followed by `npm run dev` for local development, or `npm run build` for a production build.
+
 一个运行在浏览器中的 STEP/STP 产品渲染工作台。无需安装桌面 CAD 软件，即可载入三维模型、调整材质与灯光，并导出适合评审或展示的产品渲染图。
 
 ![STEP CMF Render Studio 界面](public/screenshot.jpeg)
